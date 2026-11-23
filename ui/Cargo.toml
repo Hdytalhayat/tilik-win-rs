@@ -11,6 +11,7 @@ winapi = { workspace = true }
 winreg = { workspace = true }
 tray-icon = { workspace = true }
 global-hotkey = { workspace = true }
+rfd = "0.18"
 
 [build-dependencies]
 winres = "0.1"

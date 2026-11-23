@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use eframe::egui;
 
 use tilik_core::config::Config;
+use tilik_core::extractor;
 use tilik_core::indexer::Indexer;
 use tilik_core::searcher::{Hit, Searcher};
 use tilik_core::watcher::{watch, Watcher};
@@ -51,7 +52,16 @@ struct App {
 }
 
 impl App {
-    fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+    fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        let mut visuals = egui::Visuals::light();
+        visuals.window_fill = egui::Color32::WHITE;
+        visuals.panel_fill = egui::Color32::from_gray(248);
+        visuals.widgets.noninteractive.bg_fill = egui::Color32::from_gray(240);
+        visuals.widgets.inactive.bg_fill = egui::Color32::from_gray(232);
+        visuals.widgets.hovered.bg_fill = egui::Color32::from_gray(220);
+        visuals.widgets.active.bg_fill = egui::Color32::from_gray(200);
+        visuals.selection.bg_fill = egui::Color32::from_gray(180);
+        cc.egui_ctx.set_visuals(visuals);
         let config = Config::load(&Config::default_path()).unwrap_or_default();
         let roots = config.roots.clone();
         let (cmd_tx, cmd_rx) = mpsc::channel();
@@ -92,6 +102,19 @@ impl App {
             new_root: String::new(),
             focused: false,
             _platform: platform,
+        }
+    }
+
+    fn commit_roots(&mut self) {
+        for r in &mut self.roots {
+            *r = r.trim().replace('/', "\\");
+        }
+        let mut cfg = Config::load(&Config::default_path()).unwrap_or_default();
+        cfg.roots = self.roots.clone();
+        if let Err(e) = cfg.save(&Config::default_path()) {
+            self.status = e.to_string();
+        } else {
+            let _ = self.cmd_tx.send(Cmd::SetRoots(self.roots.clone()));
         }
     }
 
@@ -137,6 +160,9 @@ impl eframe::App for App {
                 Msg::Error(e) => self.status = e,
             }
             ctx.request_repaint();
+        }
+        if self.indexing {
+            ctx.request_repaint_after(Duration::from_millis(100));
         }
 
         // 2. Collect finished search replies (reject stale ones).
@@ -215,12 +241,12 @@ impl eframe::App for App {
                 ui.separator();
                 match self.results.get(self.selected) {
                     Some(h) => {
-                        let image_ext = matches!(
-                            h.extension.to_ascii_lowercase().as_str(),
-                            "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "ico"
-                        );
-                        if image_ext || h.snippet.trim().is_empty() {
-                            ui.label("Text preview is not available for image/binary files.");
+                        let ext = h.extension.to_ascii_lowercase();
+                        let is_video = extractor::is_video_extension(&ext);
+                        if is_video {
+                            ui.label("Text preview is not available for video files.");
+                        } else if !extractor::is_text_preview_available(&ext, &h.snippet) {
+                            ui.label("Text preview is not available for this file.");
                         } else {
                             ui.label(h.snippet.replace("<b>", "").replace("</b>", ""));
                         }
@@ -262,18 +288,22 @@ impl eframe::App for App {
                             self.roots.push(t);
                         }
                         self.new_root.clear();
+                        self.commit_roots();
+                    }
+                    if ui.button("Browse...").clicked() {
+                        if let Some(folder) = rfd::FileDialog::new().pick_folder() {
+                            let t = folder.to_string_lossy().replace('/', "\\");
+                            if !t.is_empty() && !self.roots.contains(&t) {
+                                self.roots.push(t);
+                            }
+                            self.commit_roots();
+                        }
                     }
                     if ui.button("Save").clicked() {
                         for r in &mut self.roots {
                             *r = r.trim().replace('/', "\\");
                         }
-                        let mut cfg = Config::load(&Config::default_path()).unwrap_or_default();
-                        cfg.roots = self.roots.clone();
-                        if let Err(e) = cfg.save(&Config::default_path()) {
-                            self.status = e.to_string();
-                        } else {
-                            let _ = self.cmd_tx.send(Cmd::SetRoots(self.roots.clone()));
-                        }
+                        self.commit_roots();
                     }
                 });
             });
@@ -299,11 +329,7 @@ impl eframe::App for App {
             ui.horizontal(|ui| {
                 ui.add(
                     egui::ProgressBar::new(self.progress as f32)
-                        .text(if self.indexing {
-                            format!("Indexing… {:.0}%", self.progress * 100.0)
-                        } else {
-                            "Index up to date".into()
-                        }),
+                        .text(status_label(self.indexing, self.progress)),
                 );
                 if !self.status.is_empty() {
                     ui.colored_label(egui::Color32::RED, &self.status);
@@ -418,6 +444,14 @@ fn reindex_one(indexer: &Indexer, root: &str, ui_tx: &mpsc::Sender<Msg>) {
     let _ = poller.join();
 }
 
+fn status_label(indexing: bool, progress: f64) -> String {
+    if indexing {
+        format!("Indexing... {:.0}%", progress * 100.0)
+    } else {
+        "Index up to date".into()
+    }
+}
+
 fn fmt_bytes(n: u64) -> String {
     const U: [&str; 4] = ["B", "KiB", "MiB", "GiB"];
     let mut f = n as f64;
@@ -447,6 +481,32 @@ fn format_ts(ts: i64) -> String {
     let rem = ts % 86400;
     let (h, mi, s) = (rem / 3600, (rem % 3600) / 60, rem % 60);
     format!("{y:04}-{m:02}-{d:02} {h:02}:{mi:02}:{s:02}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_label_indexing() {
+        assert_eq!(status_label(true, 0.25), "Indexing... 25%");
+        assert_eq!(status_label(false, 1.0), "Index up to date");
+    }
+
+    #[test]
+    fn video_extensions_are_classified() {
+        assert!(tilik_core::extractor::is_video_extension("mp4"));
+        assert!(tilik_core::extractor::is_video_extension("MKV"));
+        assert!(!tilik_core::extractor::is_video_extension("txt"));
+    }
+
+    #[test]
+    fn preview_text_sanitization() {
+        assert!(!tilik_core::extractor::is_text_preview_available("mp4", "some text"));
+        assert!(!tilik_core::extractor::is_text_preview_available("txt", ""));
+        assert!(!tilik_core::extractor::is_text_preview_available("txt", "bad\u{FFFD}text"));
+        assert!(tilik_core::extractor::is_text_preview_available("txt", "clean text"));
+    }
 }
 
 fn main() -> eframe::Result {

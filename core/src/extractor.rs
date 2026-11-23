@@ -18,6 +18,35 @@ pub fn should_ignore(path: &Path) -> bool {
     })
 }
 
+/// Returns true for common video/media extensions.
+pub fn is_video_extension(ext: &str) -> bool {
+    matches!(
+        ext.to_ascii_lowercase().as_str(),
+        "mp4" | "mkv" | "avi" | "mov" | "webm" | "flv" | "wmv" | "m4v" | "3gp"
+    )
+}
+
+/// Returns true when a snippet is safe/readable enough to show as text preview.
+pub fn is_text_preview_available(ext: &str, snippet: &str) -> bool {
+    if snippet.trim().is_empty() {
+        return false;
+    }
+    if snippet.contains('\u{FFFD}') {
+        return false;
+    }
+    if snippet.chars().any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t') {
+        return false;
+    }
+    let ext = ext.to_ascii_lowercase();
+    if is_video_extension(&ext) {
+        return false;
+    }
+    !matches!(
+        ext.as_str(),
+        "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "ico" | "mp3" | "wav" | "flac" | "ogg" | "zip" | "exe" | "dll"
+    )
+}
+
 /// Extracts readable text from `path`.
 /// Never panics: locked, missing, oversized, or corrupted files yield `Err`.
 /// Text formats are decoded lossily, so non-UTF-8 content never fails.
