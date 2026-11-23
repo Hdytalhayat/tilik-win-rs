@@ -1,0 +1,9 @@
+[package]
+name = "tilik-ui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tilik-core = { path = "../core" }
+eframe = { workspace = true }
+anyhow = { workspace = true }
