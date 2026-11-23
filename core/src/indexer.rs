@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use rayon::prelude::*;
 use walkdir::WalkDir;
 
-use crate::extractor::extract_text;
+use crate::extractor::{extract_text, should_ignore};
 
 pub struct Indexer {
     root: PathBuf,
@@ -19,7 +19,7 @@ impl Indexer {
         let paths: Vec<PathBuf> = WalkDir::new(&self.root)
             .into_iter()
             .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
+            .filter(|e| e.file_type().is_file() && !should_ignore(e.path()))
             .map(|e| e.path().to_path_buf())
             .collect();
 

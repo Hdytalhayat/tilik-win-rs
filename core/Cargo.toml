@@ -12,3 +12,8 @@ serde = { workspace = true }
 toml = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
+zip = { workspace = true }
+lopdf = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
