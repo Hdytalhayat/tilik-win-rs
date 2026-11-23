@@ -16,6 +16,7 @@ use winapi::shared::winerror::ERROR_ALREADY_EXISTS;
 use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::handleapi::CloseHandle;
 use winapi::um::synchapi::CreateMutexW;
+use winapi::um::winuser::{DispatchMessageW, MSG, PM_REMOVE, PeekMessageW, TranslateMessage};
 use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE};
 use winreg::RegKey;
 
@@ -134,7 +135,16 @@ pub fn init(
                     _ => {}
                 }
             }
-            thread::sleep(Duration::from_millis(50));
+            // Pump Win32 messages so the tray icon's hidden window receives
+            // click/menu events on this thread.
+            unsafe {
+                let mut msg: MSG = std::mem::zeroed();
+                while PeekMessageW(&mut msg, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
+                    TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+            }
+            thread::sleep(Duration::from_millis(16));
         }
     });
 
@@ -176,7 +186,7 @@ pub fn set_autostart(enabled: bool) -> anyhow::Result<()> {
         .open_subkey_with_flags(RUN_KEY, KEY_READ | KEY_SET_VALUE)?;
     if enabled {
         let exe = std::env::current_exe()?;
-        key.set_value(AUTOSTART_VALUE, &exe.to_string_lossy().to_string())?;
+        key.set_value(AUTOSTART_VALUE, &format!("\"{}\"", exe.to_string_lossy()))?;
     } else {
         let _ = key.delete_value(AUTOSTART_VALUE); // absent value is not an error
     }

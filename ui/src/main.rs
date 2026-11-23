@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -99,8 +100,9 @@ impl App {
             return;
         };
         if in_explorer {
+            let path = h.path.replace('/', "\\");
             let _ = std::process::Command::new("explorer")
-                .arg(format!("/select,{}", h.path))
+                .raw_arg(format!("/select,\"{path}\""))
                 .spawn();
         } else {
             let _ = std::process::Command::new("cmd")
