@@ -53,14 +53,51 @@ struct App {
 
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let mut visuals = egui::Visuals::light();
-        visuals.window_fill = egui::Color32::WHITE;
-        visuals.panel_fill = egui::Color32::from_gray(248);
-        visuals.widgets.noninteractive.bg_fill = egui::Color32::from_gray(240);
-        visuals.widgets.inactive.bg_fill = egui::Color32::from_gray(232);
-        visuals.widgets.hovered.bg_fill = egui::Color32::from_gray(220);
-        visuals.widgets.active.bg_fill = egui::Color32::from_gray(200);
-        visuals.selection.bg_fill = egui::Color32::from_gray(180);
+        // Palet gaya Gemini dark: latar hitam pekat, teks putih, aksen biru
+        let bg_black = egui::Color32::from_rgb(10, 12, 16);       // hitam utama
+        let surface_dark = egui::Color32::from_rgb(19, 22, 29);   // panel / input gelap
+        let _surface_elev = egui::Color32::from_rgb(28, 33, 43);   // hover netral
+        let text_white = egui::Color32::from_rgb(242, 245, 250);  // putih bersih
+        let gemini_blue = egui::Color32::from_rgb(66, 133, 244);  // biru utama (tombol & progress)
+        let gemini_blue_hover = egui::Color32::from_rgb(92, 152, 252);
+        let gemini_blue_active = egui::Color32::from_rgb(41, 108, 224);
+        let border_subtle = egui::Color32::from_rgb(48, 56, 72);
+
+        let mut visuals = egui::Visuals::dark();
+        visuals.override_text_color = Some(text_white);
+        visuals.window_fill = bg_black;
+        visuals.panel_fill = bg_black;
+        visuals.faint_bg_color = surface_dark;
+        visuals.extreme_bg_color = egui::Color32::from_rgb(6, 7, 10);
+
+        // Teks statis / label / input area
+        visuals.widgets.noninteractive.bg_fill = surface_dark;
+        visuals.widgets.noninteractive.weak_bg_fill = surface_dark;
+        visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0_f32, border_subtle);
+        visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0_f32, text_white);
+
+        // Tombol & kontrol default (biru)
+        visuals.widgets.inactive.bg_fill = gemini_blue;
+        visuals.widgets.inactive.weak_bg_fill = gemini_blue;
+        visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0_f32, gemini_blue);
+        visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0_f32, text_white);
+
+        // Saat kursor mengarah ke tombol / item interaktif
+        visuals.widgets.hovered.bg_fill = gemini_blue_hover;
+        visuals.widgets.hovered.weak_bg_fill = gemini_blue_hover;
+        visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0_f32, gemini_blue_hover);
+        visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0_f32, text_white);
+
+        // Saat tombol ditekan / aktif
+        visuals.widgets.active.bg_fill = gemini_blue_active;
+        visuals.widgets.active.weak_bg_fill = gemini_blue_active;
+        visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0_f32, text_white);
+        visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0_f32, text_white);
+
+        // Item terpilih (selectable_label / teks terseleksi)
+        visuals.selection.bg_fill = gemini_blue.linear_multiply(0.35);
+        visuals.selection.stroke = egui::Stroke::new(1.0_f32, gemini_blue_hover);
+
         cc.egui_ctx.set_visuals(visuals);
         let config = Config::load(&Config::default_path()).unwrap_or_default();
         let roots = config.roots.clone();
@@ -285,7 +322,11 @@ impl eframe::App for App {
                 }
                 ui.horizontal(|ui| {
                     ui.text_edit_singleline(&mut self.new_root);
-                    if ui.button("Add").clicked() {
+                    let btn_fill = egui::Color32::from_rgb(66, 133, 244);
+                    if ui
+                        .add(egui::Button::new("Add").fill(btn_fill))
+                        .clicked()
+                    {
                         let t = self.new_root.trim().replace('/', "\\");
                         if !t.is_empty() && !self.roots.contains(&t) {
                             self.roots.push(t);
@@ -293,7 +334,10 @@ impl eframe::App for App {
                         self.new_root.clear();
                         self.commit_roots();
                     }
-                    if ui.button("Browse...").clicked() {
+                    if ui
+                        .add(egui::Button::new("Browse...").fill(btn_fill))
+                        .clicked()
+                    {
                         if let Some(folder) = rfd::FileDialog::new().pick_folder() {
                             let t = folder.to_string_lossy().replace('/', "\\");
                             if !t.is_empty() && !self.roots.contains(&t) {
@@ -302,7 +346,10 @@ impl eframe::App for App {
                             self.commit_roots();
                         }
                     }
-                    if ui.button("Save").clicked() {
+                    if ui
+                        .add(egui::Button::new("Save").fill(btn_fill))
+                        .clicked()
+                    {
                         for r in &mut self.roots {
                             *r = r.trim().replace('/', "\\");
                         }
@@ -329,13 +376,18 @@ impl eframe::App for App {
         });
 
         egui::TopBottomPanel::bottom("tilik_footer").show(&mut ctx, |ui| {
+            let gemini_blue = egui::Color32::from_rgb(66, 133, 244);
             ui.horizontal(|ui| {
                 ui.add(
                     egui::ProgressBar::new(self.progress as f32)
-                        .text(status_label(self.indexing, self.progress)),
+                        .fill(gemini_blue)
+                        .text(
+                            egui::RichText::new(status_label(self.indexing, self.progress))
+                                .color(egui::Color32::WHITE),
+                        ),
                 );
                 if !self.status.is_empty() {
-                    ui.colored_label(egui::Color32::RED, &self.status);
+                    ui.colored_label(egui::Color32::from_rgb(248, 113, 113), &self.status);
                 }
             });
         });
