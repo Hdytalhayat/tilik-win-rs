@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
