@@ -188,7 +188,9 @@ impl Indexer {
             skipped: 0,
             deleted: 0,
         };
-        let mut writer = self.index.writer(50_000_000)?;
+        // Cap the Tantivy writer heap to keep RAM low even on large corpora.
+        const WRITER_HEAP_BYTES: usize = 16 * 1024 * 1024;
+        let mut writer = self.index.writer(WRITER_HEAP_BYTES)?;
         for doc in docs.iter().flatten() {
             match old.get(&doc.path) {
                 Some(&(mt, sz)) if mt == doc.mtime && sz == doc.size => {

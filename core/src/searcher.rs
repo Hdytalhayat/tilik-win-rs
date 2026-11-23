@@ -1,12 +1,11 @@
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
-use tantivy::schema::{Field, OwnedValue, Schema, TantivyDocument};
-use tantivy::tokenizer::TokenizerManager;
+use tantivy::schema::{Field, OwnedValue, TantivyDocument};
+
 use tantivy::{Index, IndexReader};
 
 pub struct Searcher {
-    schema: Schema,
-    tokenizer: TokenizerManager,
+    parser: QueryParser,
     reader: IndexReader,
     path_field: Field,
     filename_field: Field,
@@ -28,32 +27,32 @@ pub struct Hit {
 impl Searcher {
     pub fn new(index: &Index) -> anyhow::Result<Self> {
         let schema = index.schema().clone();
+        let tokenizer = index.tokenizers().clone();
+        let path_field = schema.get_field("path")?;
+        let filename_field = schema.get_field("filename")?;
+        let extension_field = schema.get_field("extension")?;
+        let modified_ts_field = schema.get_field("modified_ts")?;
+        let content_field = schema.get_field("content")?;
+        let parser = QueryParser::new(
+            schema.clone(),
+            vec![filename_field, content_field, extension_field, path_field],
+            tokenizer.clone(),
+        );
         Ok(Self {
-            tokenizer: index.tokenizers().clone(),
+            parser,
             reader: index.reader()?,
-            path_field: schema.get_field("path")?,
-            filename_field: schema.get_field("filename")?,
-            extension_field: schema.get_field("extension")?,
-            modified_ts_field: schema.get_field("modified_ts")?,
-            content_field: schema.get_field("content")?,
-            schema,
+            path_field,
+            filename_field,
+            extension_field,
+            modified_ts_field,
+            content_field,
         })
     }
 
     /// Searches `query`, returning up to `limit` hits with score, metadata,
     /// and a highlighted snippet (first 200 chars of content).
     pub fn search(&self, query: &str, limit: usize) -> anyhow::Result<Vec<Hit>> {
-        let parser = QueryParser::new(
-            self.schema.clone(),
-            vec![
-                self.filename_field,
-                self.content_field,
-                self.extension_field,
-                self.path_field,
-            ],
-            self.tokenizer.clone(),
-        );
-        let q = parser.parse_query(query)?;
+        let q = self.parser.parse_query(query)?;
         let searcher = self.reader.searcher();
         let top = searcher.search(&q, &TopDocs::with_limit(limit))?;
         let terms = query_terms(query);

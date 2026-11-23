@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 /// Default RAM limit for the index writer (50 MiB).
-pub const DEFAULT_WRITER_RAM_BYTES: u64 = 50 * 1024 * 1024;
+pub const DEFAULT_WRITER_RAM_BYTES: u64 = 16 * 1024 * 1024;
 /// Default global hotkey.
 pub const DEFAULT_HOTKEY: &str = "Ctrl+Alt+F";
 
