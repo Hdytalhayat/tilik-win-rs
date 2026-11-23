@@ -7,7 +7,8 @@ use crate::error::ExtractError;
 /// Maximum size of a file to extract (25 MiB).
 pub const MAX_FILE_SIZE: u64 = 25 * 1024 * 1024;
 
-const JUNK_DIRS: [&str; 4] = ["node_modules", ".git", "target", "$RECYCLE.BIN"];
+const JUNK_DIRS: [&str; 5] =
+    ["node_modules", ".git", "target", "$RECYCLE.BIN", ".tilik-index"];
 
 /// Returns true if any component of `path` is a system/junk directory.
 pub fn should_ignore(path: &Path) -> bool {

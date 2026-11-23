@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
-use tilik_core::search::SearchEngine;
+use tilik_core::indexer::Indexer;
+use tilik_core::searcher::Searcher;
 
 struct TilikApp {
     root: PathBuf,
@@ -8,7 +9,6 @@ struct TilikApp {
     query: String,
     results: Vec<String>,
     status: String,
-    engine: Option<SearchEngine>,
 }
 
 impl TilikApp {
@@ -20,7 +20,6 @@ impl TilikApp {
             query: String::new(),
             results: Vec::new(),
             status: String::new(),
-            engine: None,
         }
     }
 
@@ -28,23 +27,33 @@ impl TilikApp {
         if self.query.trim().is_empty() {
             return;
         }
-        if self.engine.is_none() {
-            match SearchEngine::build(&self.root, &self.index_dir) {
-                Ok(engine) => self.engine = Some(engine),
-                Err(e) => {
-                    self.status = e.to_string();
-                    return;
-                }
+        let indexer = match Indexer::open_or_create(&self.index_dir) {
+            Ok(x) => x,
+            Err(e) => {
+                self.status = e.to_string();
+                return;
             }
+        };
+        if let Err(e) = indexer.index_directory(&self.root) {
+            self.status = e.to_string();
+            return;
         }
-        if let Some(engine) = &self.engine {
-            match engine.search(&self.query) {
-                Ok(results) => {
-                    self.results = results;
-                    self.status = String::new();
-                }
-                Err(e) => self.status = e.to_string(),
+        let searcher = match Searcher::new(indexer.index()) {
+            Ok(s) => s,
+            Err(e) => {
+                self.status = e.to_string();
+                return;
             }
+        };
+        match searcher.search(&self.query, 20) {
+            Ok(hits) => {
+                self.results = hits
+                    .iter()
+                    .map(|h| format!("{:.2}  {} — {}", h.score, h.path, h.snippet))
+                    .collect();
+                self.status = String::new();
+            }
+            Err(e) => self.status = e.to_string(),
         }
     }
 }
