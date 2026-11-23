@@ -28,6 +28,7 @@ const AUTOSTART_VALUE: &str = "Tilik";
 /// even while it is hidden (egui::Context is Send+Sync).
 static UI_CTX: Mutex<Option<egui::Context>> = Mutex::new(None);
 static VISIBLE: AtomicBool = AtomicBool::new(true);
+static NEED_FOCUS: AtomicBool = AtomicBool::new(false);
 
 /// Holds the named mutex alive; the tray/hotkey live on their own thread.
 pub struct Platform {
@@ -165,10 +166,19 @@ fn toggle_visibility() {
 
 fn set_visible(visible: bool) {
     VISIBLE.store(visible, Ordering::SeqCst);
+    if visible {
+        NEED_FOCUS.store(true, Ordering::SeqCst);
+    }
     let Some(ctx) = UI_CTX.lock().unwrap().clone() else {
         return;
     };
     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(visible));
+    if visible {
+        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(
+            egui::UserAttentionType::Critical,
+        ));
+    }
     ctx.request_repaint();
 }
 
@@ -299,4 +309,9 @@ fn parse_hotkey(spec: &str) -> anyhow::Result<HotKey> {
 /// Called from `App::update` so the dispatcher can reach the UI context.
 pub fn publish_context(ctx: &egui::Context) {
     *UI_CTX.lock().unwrap() = Some(ctx.clone());
+}
+
+/// Consumes a pending focus request created by showing the window.
+pub fn take_focus_request() -> bool {
+    NEED_FOCUS.swap(false, Ordering::SeqCst)
 }

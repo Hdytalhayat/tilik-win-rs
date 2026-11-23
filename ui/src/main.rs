@@ -138,6 +138,9 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, mut ctx: &egui::Context, _frame: &mut eframe::Frame) {
         platform::windows::publish_context(&ctx);
+        if platform::windows::take_focus_request() {
+            self.focused = false;
+        }
 
         // X button: hide to the tray, keep the background indexer alive.
         if ctx.input(|i| i.viewport().close_requested()) {
