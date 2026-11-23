@@ -9,10 +9,12 @@ use tilik_core::indexer::Indexer;
 use tilik_core::searcher::{Hit, Searcher};
 use tilik_core::watcher::{watch, Watcher};
 
+mod platform;
+
 const SEARCH_DEBOUNCE: Duration = Duration::from_millis(80);
 const SEARCH_LIMIT: usize = 50;
 
-enum Cmd {
+pub enum Cmd {
     Search(String, mpsc::Sender<Vec<Hit>>),
     SetRoots(Vec<String>),
     Reindex,
@@ -42,6 +44,7 @@ struct App {
     roots: Vec<String>,
     new_root: String,
     focused: bool,
+    _platform: Option<platform::windows::Platform>,
 }
 
 impl App {
@@ -57,6 +60,17 @@ impl App {
         let worker_tx = cmd_tx.clone();
         std::thread::spawn(move || worker(worker_tx, cmd_rx, msg_tx, index_dir));
         let _ = cmd_tx.send(Cmd::SetRoots(roots.clone()));
+        let platform = match platform::windows::init(&config.hotkey, cmd_tx.clone()) {
+            Ok(p) => Some(p),
+            Err(e) if e.to_string() == "already running" => {
+                eprintln!("Tilik is already running.");
+                std::process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("platform init failed: {e}");
+                None
+            }
+        };
         Self {
             query: String::new(),
             prev_query: String::new(),
@@ -74,6 +88,7 @@ impl App {
             roots,
             new_root: String::new(),
             focused: false,
+            _platform: platform,
         }
     }
 
@@ -95,6 +110,15 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, mut ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        platform::windows::publish_context(&ctx);
+
+        // X button: hide to the tray, keep the background indexer alive.
+        if ctx.input(|i| i.viewport().close_requested()) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            return;
+        }
+
         // 1. Drain worker messages (non-blocking).
         while let Ok(msg) = self.msg_rx.try_recv() {
             match msg {
