@@ -36,6 +36,8 @@ pub fn extract_text(path: &Path) -> Result<String, ExtractError> {
         "pdf" => extract_pdf(path),
         "docx" => extract_zip_entry(path, "word/document.xml"),
         "xlsx" => extract_zip_entry(path, "xl/sharedStrings.xml"),
+        // Images have no extractable text; index metadata only.
+        "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "ico" => Ok(String::new()),
         // txt, md, rs, py, js, ts, json, csv, and anything else: raw text
         _ => Ok(String::from_utf8_lossy(&fs::read(path)?).into_owned()),
     }
@@ -196,6 +198,16 @@ mod tests {
             format!("trailer\n<</Size 6 /Root 1 0 R>>\nstartxref\n{xref_pos}\n%%EOF\n").as_bytes(),
         );
         fs::write(path, buf).unwrap();
+    }
+
+    #[test]
+    fn image_files_have_no_text_preview() {
+        let dir = tempdir().unwrap();
+        for name in ["a.png", "b.jpg", "c.jpeg", "d.webp", "e.gif", "f.bmp", "g.ico"] {
+            let p = dir.path().join(name);
+            fs::write(&p, [0u8, 1, 2, 3]).unwrap();
+            assert_eq!(extract_text(&p).unwrap(), "");
+        }
     }
 
     #[test]

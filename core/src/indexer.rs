@@ -181,7 +181,6 @@ impl Indexer {
             .map(|(p, mtime, size)| {
                 let doc = extract_text(p)
                     .ok()
-                    .filter(|t| !t.is_empty())
                     .map(|text| FileDoc {
                         path: p.to_string_lossy().into_owned(),
                         filename: p

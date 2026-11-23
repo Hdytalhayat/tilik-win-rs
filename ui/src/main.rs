@@ -215,7 +215,15 @@ impl eframe::App for App {
                 ui.separator();
                 match self.results.get(self.selected) {
                     Some(h) => {
-                        ui.label(h.snippet.replace("<b>", "").replace("</b>", ""));
+                        let image_ext = matches!(
+                            h.extension.to_ascii_lowercase().as_str(),
+                            "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "ico"
+                        );
+                        if image_ext || h.snippet.trim().is_empty() {
+                            ui.label("Text preview is not available for image/binary files.");
+                        } else {
+                            ui.label(h.snippet.replace("<b>", "").replace("</b>", ""));
+                        }
                         ui.separator();
                         if let Ok(md) = std::fs::metadata(&h.path) {
                             ui.label(format!("Size: {}", fmt_bytes(md.len())));
