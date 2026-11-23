@@ -249,14 +249,17 @@ impl eframe::App for App {
                 ui.horizontal(|ui| {
                     ui.text_edit_singleline(&mut self.new_root);
                     if ui.button("Add").clicked() {
-                        let t = self.new_root.trim().to_string();
+                        let t = self.new_root.trim().replace('/', "\\");
                         if !t.is_empty() && !self.roots.contains(&t) {
                             self.roots.push(t);
                         }
                         self.new_root.clear();
                     }
                     if ui.button("Save").clicked() {
-                        let mut cfg = Config::default();
+                        for r in &mut self.roots {
+                            *r = r.trim().replace('/', "\\");
+                        }
+                        let mut cfg = Config::load(&Config::default_path()).unwrap_or_default();
                         cfg.roots = self.roots.clone();
                         if let Err(e) = cfg.save(&Config::default_path()) {
                             self.status = e.to_string();
@@ -349,7 +352,11 @@ fn worker(
                     for batch in wrx {
                         let affected: Vec<String> = fwd_roots
                             .iter()
-                            .filter(|r| batch.iter().any(|p| p.starts_with(r.as_str())))
+                            .filter(|r| {
+                                batch.iter().any(|p| {
+                                    p.to_lowercase().starts_with(&r.to_lowercase())
+                                })
+                            })
                             .cloned()
                             .collect();
                         if !affected.is_empty() {
@@ -357,6 +364,8 @@ fn worker(
                         }
                     }
                 });
+                // Rebuild the shared index from the full folder list so added
+                // folders are cumulative and removed folders are cleaned.
                 let _ = cmd_tx.send(Cmd::Reindex);
             }
             Cmd::Reindex => reindex_all(&indexer, &roots, &ui_tx),
@@ -371,9 +380,18 @@ fn worker(
 }
 
 fn reindex_all(indexer: &Indexer, roots: &[String], ui_tx: &mpsc::Sender<Msg>) {
-    for r in roots {
-        reindex_one(indexer, r, ui_tx);
+    let p = indexer.progress();
+    let tx = ui_tx.clone();
+    let poller = std::thread::spawn(move || {
+        while p.ratio() < 1.0 {
+            let _ = tx.send(Msg::Progress(p.ratio()));
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    });
+    if let Err(e) = indexer.index_directories(roots) {
+        let _ = ui_tx.send(Msg::Error(e.to_string()));
     }
+    let _ = poller.join();
     let _ = ui_tx.send(Msg::Done);
 }
 

@@ -78,3 +78,63 @@ fn deleted_files_are_removed_from_index() {
     assert!(searcher.search("delete", 10).unwrap().is_empty());
     assert_eq!(searcher.search("keep", 10).unwrap().len(), 1);
 }
+
+#[test]
+fn adding_second_folder_keeps_first_folder_results() {
+    let dir = tempdir().unwrap();
+    let root1 = dir.path().join("root1");
+    let root2 = dir.path().join("root2");
+    fs::create_dir_all(&root1).unwrap();
+    fs::create_dir_all(&root2).unwrap();
+    fs::write(root1.join("first.txt"), "alpha from first folder").unwrap();
+    fs::write(root2.join("second.txt"), "beta from second folder").unwrap();
+
+    let indexer = Indexer::open_or_create(&dir.path().join("index")).unwrap();
+    indexer.index_directory(&root1).unwrap();
+    indexer.index_directory(&root2).unwrap();
+
+    let searcher = Searcher::new(indexer.index()).unwrap();
+    assert_eq!(searcher.search("alpha", 10).unwrap().len(), 1);
+    assert_eq!(searcher.search("beta", 10).unwrap().len(), 1);
+}
+
+#[test]
+fn new_text_file_is_detected_on_reindex() {
+    let dir = tempdir().unwrap();
+    let root = dir.path().join("root");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("old.txt"), "old content").unwrap();
+
+    let indexer = Indexer::open_or_create(&dir.path().join("index")).unwrap();
+    indexer.index_directory(&root).unwrap();
+
+    fs::write(root.join("new.txt"), "freshly added text").unwrap();
+    let report = indexer.index_directory(&root).unwrap();
+    assert!(report.indexed >= 1);
+
+    let searcher = Searcher::new(indexer.index()).unwrap();
+    assert_eq!(searcher.search("freshly", 10).unwrap().len(), 1);
+}
+
+#[test]
+fn removed_folder_is_cleaned_from_shared_index() {
+    let dir = tempdir().unwrap();
+    let root1 = dir.path().join("root1");
+    let root2 = dir.path().join("root2");
+    fs::create_dir_all(&root1).unwrap();
+    fs::create_dir_all(&root2).unwrap();
+    fs::write(root1.join("gone.txt"), "remove me").unwrap();
+    fs::write(root2.join("stay.txt"), "keep me").unwrap();
+
+    let indexer = Indexer::open_or_create(&dir.path().join("index")).unwrap();
+    indexer.index_directory(&root1).unwrap();
+    indexer.index_directory(&root2).unwrap();
+
+    indexer
+        .index_directories(&[root2.to_string_lossy().to_string()])
+        .unwrap();
+
+    let searcher = Searcher::new(indexer.index()).unwrap();
+    assert!(searcher.search("remove", 10).unwrap().is_empty());
+    assert_eq!(searcher.search("keep", 10).unwrap().len(), 1);
+}

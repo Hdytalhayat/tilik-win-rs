@@ -1,6 +1,6 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::UNIX_EPOCH;
@@ -130,25 +130,46 @@ impl Indexer {
         self.progress.clone()
     }
 
-    /// Indexes `path`. Text extraction runs in parallel (rayon) with
-    /// monitorable progress; the writer pass is single-threaded because
-    /// tantivy's `IndexWriter` is not `Send`/`Sync`.
-    ///
-    /// Files whose (mtime, size) is unchanged are skipped, changed files are
-    /// re-indexed, and files that vanished from disk are removed.
+    /// Indexes one folder while preserving documents from other indexed folders.
+    /// Only files that vanished from `path` are removed.
     pub fn index_directory(&self, path: &Path) -> anyhow::Result<Report> {
-        // 1. Walk the tree.
-        let mut entries: Vec<(std::path::PathBuf, i64, u64)> = Vec::new();
-        for e in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
-            if e.file_type().is_file() && !should_ignore(e.path()) {
-                let md = e.metadata()?;
-                let mtime = md
-                    .modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs() as i64)
-                    .unwrap_or(0);
-                entries.push((e.path().to_path_buf(), mtime, md.len()));
+        self.index_roots(&[path.to_path_buf()], false)
+    }
+
+    /// Indexes all given folders in one shared index and removes documents
+    /// that belong to folders no longer present in `roots`.
+    pub fn index_directories(&self, roots: &[String]) -> anyhow::Result<Report> {
+        self.index_roots(
+            &roots.iter().map(PathBuf::from).collect::<Vec<_>>(),
+            true,
+        )
+    }
+
+    fn index_roots(&self, roots: &[PathBuf], prune_other_roots: bool) -> anyhow::Result<Report> {
+        // Limit CPU usage: at most half the logical cores, at least 2 threads.
+        let logical = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(2);
+        let threads = (logical / 2).max(2);
+        let _ = rayon::ThreadPoolBuilder::new().num_threads(threads).build_global();
+
+        // 1. Walk all requested roots.
+        let mut entries: Vec<(PathBuf, i64, u64)> = Vec::new();
+        for root in roots {
+            if !root.exists() {
+                continue;
+            }
+            for e in WalkDir::new(root).into_iter().filter_map(|e| e.ok()) {
+                if e.file_type().is_file() && !should_ignore(e.path()) {
+                    let md = e.metadata()?;
+                    let mtime = md
+                        .modified()
+                        .ok()
+                        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs() as i64)
+                        .unwrap_or(0);
+                    entries.push((e.path().to_path_buf(), mtime, md.len()));
+                }
             }
         }
 
@@ -182,15 +203,23 @@ impl Indexer {
 
         // 3. Skip / update / delete pass.
         let old = self.manifest.read().unwrap().clone();
-        let mut new_manifest = BTreeMap::new();
+        let current_paths: HashSet<String> =
+            docs.iter().flatten().map(|d| d.path.clone()).collect();
+        let mut new_manifest = if prune_other_roots {
+            BTreeMap::new()
+        } else {
+            old.iter()
+                .filter(|(p, _)| !roots.iter().any(|r| Path::new(p).starts_with(r)))
+                .map(|(k, v)| (k.clone(), *v))
+                .collect()
+        };
         let mut report = Report {
             indexed: 0,
             skipped: 0,
             deleted: 0,
         };
-        // Cap the Tantivy writer heap to keep RAM low even on large corpora.
-        const WRITER_HEAP_BYTES: usize = 16 * 1024 * 1024;
-        let mut writer = self.index.writer(WRITER_HEAP_BYTES)?;
+        let heap = threads * 16 * 1024 * 1024;
+        let mut writer = self.index.writer_with_num_threads(threads, heap)?;
         for doc in docs.iter().flatten() {
             match old.get(&doc.path) {
                 Some(&(mt, sz)) if mt == doc.mtime && sz == doc.size => {
@@ -211,14 +240,22 @@ impl Indexer {
                 }
             }
         }
-        for path in old.keys().filter(|k| !new_manifest.contains_key(*k)) {
-            writer.delete_term(Term::from_field_text(self.fields.path, path));
-            report.deleted += 1;
+        for path in old.keys() {
+            let under_target = roots.iter().any(|r| Path::new(path).starts_with(r));
+            let should_delete = if prune_other_roots {
+                !current_paths.contains(path)
+            } else {
+                under_target && !current_paths.contains(path)
+            };
+            if should_delete {
+                writer.delete_term(Term::from_field_text(self.fields.path, path));
+                report.deleted += 1;
+                new_manifest.remove(path);
+            }
         }
         writer.commit()?;
 
-        // 4. Persist the manifest after a successful commit, so it always
-        //    reflects what is in the index.
+        // 4. Persist the manifest.
         let m = Manifest {
             files: new_manifest
                 .iter()
