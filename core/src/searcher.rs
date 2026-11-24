@@ -52,9 +52,24 @@ impl Searcher {
     /// Searches `query`, returning up to `limit` hits with score, metadata,
     /// and a highlighted snippet (first 200 chars of content).
     pub fn search(&self, query: &str, limit: usize) -> anyhow::Result<Vec<Hit>> {
-        let q = self.parser.parse_query(query)?;
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let q = if let Some(ext_query) = trimmed.strip_prefix('.').filter(|s| !s.is_empty() && !s.contains(char::is_whitespace)) {
+            let ext_val = ext_query.to_ascii_lowercase();
+            let term = tantivy::Term::from_field_text(self.extension_field, &ext_val);
+            Box::new(tantivy::query::TermQuery::new(
+                term,
+                tantivy::schema::IndexRecordOption::Basic,
+            )) as Box<dyn tantivy::query::Query>
+        } else {
+            Box::new(self.parser.parse_query(trimmed)?) as Box<dyn tantivy::query::Query>
+        };
+
         let searcher = self.reader.searcher();
-        let top = searcher.search(&q, &TopDocs::with_limit(limit))?;
+        let top = searcher.search(q.as_ref(), &TopDocs::with_limit(limit))?;
         let terms = query_terms(query);
         let mut hits = Vec::new();
         for (score, addr) in top {
