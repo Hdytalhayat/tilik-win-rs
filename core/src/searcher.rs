@@ -14,7 +14,7 @@ pub struct Searcher {
     content_field: Field,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Hit {
     pub score: f32,
     pub path: String,

@@ -6,7 +6,6 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use eframe::egui;
-
 use tilik_core::config::Config;
 use tilik_core::extractor;
 use tilik_core::indexer::Indexer;
@@ -48,57 +47,56 @@ struct App {
     roots: Vec<String>,
     new_root: String,
     focused: bool,
+    show_folders_modal: bool,
     _platform: Option<platform::windows::Platform>,
 }
 
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // Palet gaya Gemini dark: latar hitam pekat, teks putih, aksen biru
-        let bg_black = egui::Color32::from_rgb(10, 12, 16);       // hitam utama
-        let surface_dark = egui::Color32::from_rgb(19, 22, 29);   // panel / input gelap
-        let _surface_elev = egui::Color32::from_rgb(28, 33, 43);   // hover netral
-        let text_white = egui::Color32::from_rgb(242, 245, 250);  // putih bersih
-        let gemini_blue = egui::Color32::from_rgb(66, 133, 244);  // biru utama (tombol & progress)
-        let gemini_blue_hover = egui::Color32::from_rgb(92, 152, 252);
-        let gemini_blue_active = egui::Color32::from_rgb(41, 108, 224);
-        let border_subtle = egui::Color32::from_rgb(48, 56, 72);
+        // Modern dark surface hierarchy.
+        let base = egui::Color32::from_rgb(11, 14, 20);
+        let surface = egui::Color32::from_rgb(20, 25, 35);
+        let elevated = egui::Color32::from_rgb(28, 35, 48);
+        let border = egui::Color32::from_rgb(42, 51, 68);
+        let text = egui::Color32::from_rgb(242, 245, 250);
+        let accent = egui::Color32::from_rgb(66, 133, 244);
 
         let mut visuals = egui::Visuals::dark();
-        visuals.override_text_color = Some(text_white);
-        visuals.window_fill = bg_black;
-        visuals.panel_fill = bg_black;
-        visuals.faint_bg_color = surface_dark;
+        visuals.override_text_color = Some(text);
+        visuals.window_fill = base;
+        visuals.panel_fill = base;
+        visuals.faint_bg_color = surface;
         visuals.extreme_bg_color = egui::Color32::from_rgb(6, 7, 10);
-
-        // Teks statis / label / input area
-        visuals.widgets.noninteractive.bg_fill = surface_dark;
-        visuals.widgets.noninteractive.weak_bg_fill = surface_dark;
-        visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0_f32, border_subtle);
-        visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0_f32, text_white);
-
-        // Tombol & kontrol default (biru)
-        visuals.widgets.inactive.bg_fill = gemini_blue;
-        visuals.widgets.inactive.weak_bg_fill = gemini_blue;
-        visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0_f32, gemini_blue);
-        visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0_f32, text_white);
-
-        // Saat kursor mengarah ke tombol / item interaktif
-        visuals.widgets.hovered.bg_fill = gemini_blue_hover;
-        visuals.widgets.hovered.weak_bg_fill = gemini_blue_hover;
-        visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0_f32, gemini_blue_hover);
-        visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0_f32, text_white);
-
-        // Saat tombol ditekan / aktif
-        visuals.widgets.active.bg_fill = gemini_blue_active;
-        visuals.widgets.active.weak_bg_fill = gemini_blue_active;
-        visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0_f32, text_white);
-        visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0_f32, text_white);
-
-        // Item terpilih (selectable_label / teks terseleksi)
-        visuals.selection.bg_fill = gemini_blue.linear_multiply(0.35);
-        visuals.selection.stroke = egui::Stroke::new(1.0_f32, gemini_blue_hover);
-
+        visuals.widgets.noninteractive.bg_fill = surface;
+        visuals.widgets.noninteractive.weak_bg_fill = surface;
+        visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0_f32, border);
+        visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0_f32, text);
+        visuals.widgets.inactive.bg_fill = elevated;
+        visuals.widgets.inactive.weak_bg_fill = elevated;
+        visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0_f32, border);
+        visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0_f32, text);
+        visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(36, 45, 62);
+        visuals.widgets.hovered.weak_bg_fill = egui::Color32::from_rgb(36, 45, 62);
+        visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0_f32, accent);
+        visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0_f32, text);
+        visuals.widgets.active.bg_fill = accent;
+        visuals.widgets.active.weak_bg_fill = accent;
+        visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0_f32, accent);
+        visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0_f32, egui::Color32::WHITE);
+        visuals.selection.bg_fill = accent.linear_multiply(0.35);
+        visuals.selection.stroke = egui::Stroke::new(1.0_f32, accent);
         cc.egui_ctx.set_visuals(visuals);
+
+        let mut style = (*cc.egui_ctx.style()).clone();
+        style.spacing.item_spacing = egui::vec2(8.0, 8.0);
+        style.spacing.button_padding = egui::vec2(12.0, 6.0);
+        style.visuals.widgets.noninteractive.corner_radius = egui::CornerRadius::same(8);
+        style.visuals.widgets.inactive.corner_radius = egui::CornerRadius::same(8);
+        style.visuals.widgets.hovered.corner_radius = egui::CornerRadius::same(8);
+        style.visuals.widgets.active.corner_radius = egui::CornerRadius::same(8);
+        style.visuals.window_corner_radius = egui::CornerRadius::same(8);
+        cc.egui_ctx.set_style(style);
+
         let config = Config::load(&Config::default_path()).unwrap_or_default();
         let roots = config.roots.clone();
         let (cmd_tx, cmd_rx) = mpsc::channel();
@@ -138,20 +136,8 @@ impl App {
             roots,
             new_root: String::new(),
             focused: false,
+            show_folders_modal: false,
             _platform: platform,
-        }
-    }
-
-    fn commit_roots(&mut self) {
-        for r in &mut self.roots {
-            *r = r.trim().replace('/', "\\");
-        }
-        let mut cfg = Config::load(&Config::default_path()).unwrap_or_default();
-        cfg.roots = self.roots.clone();
-        if let Err(e) = cfg.save(&Config::default_path()) {
-            self.status = e.to_string();
-        } else {
-            let _ = self.cmd_tx.send(Cmd::SetRoots(self.roots.clone()));
         }
     }
 
@@ -170,23 +156,36 @@ impl App {
                 .spawn();
         }
     }
+
+    fn commit_roots(&mut self) {
+        for r in &mut self.roots {
+            *r = r.trim().replace('/', "\\");
+        }
+        let mut cfg = Config::load(&Config::default_path()).unwrap_or_default();
+        cfg.roots = self.roots.clone();
+        if let Err(e) = cfg.save(&Config::default_path()) {
+            self.status = e.to_string();
+        } else {
+            let _ = self.cmd_tx.send(Cmd::SetRoots(self.roots.clone()));
+        }
+    }
 }
 
 impl eframe::App for App {
-    fn update(&mut self, mut ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         platform::windows::publish_context(&ctx);
         if platform::windows::take_focus_request() {
             self.focused = false;
         }
 
-        // X button: hide to the tray, keep the background indexer alive.
+        // X button hides to tray.
         if ctx.input(|i| i.viewport().close_requested()) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
             return;
         }
 
-        // 1. Drain worker messages (non-blocking).
+        // Drain worker messages.
         while let Ok(msg) = self.msg_rx.try_recv() {
             match msg {
                 Msg::Progress(r) => {
@@ -205,21 +204,18 @@ impl eframe::App for App {
             ctx.request_repaint_after(Duration::from_millis(100));
         }
 
-        // 2. Collect finished search replies (reject stale ones).
-        if let Some(rx) = self.reply_rx.as_ref() {
-            if let Ok(hits) = rx.try_recv() {
-                if self.pending_query == self.query.trim() {
-                    self.results = hits;
-                    self.selected = 0;
-                    self.reply_rx = None;
-                }
+        // Escape closes modal first, then hides app.
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if self.show_folders_modal {
+                self.show_folders_modal = false;
+                self.focused = false;
+                return;
             }
-        }
-        if self.selected >= self.results.len() {
-            self.selected = self.results.len().saturating_sub(1);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            return;
         }
 
-        // 3. Debounced real-time search.
+        // Debounced search.
         if self.query != self.prev_query {
             self.prev_query = self.query.clone();
             self.last_edit = Instant::now();
@@ -239,12 +235,22 @@ impl eframe::App for App {
             }
         }
 
-        // 4. Keyboard navigation.
-        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
-            return;
+        // Collect search replies.
+        if let Some(rx) = self.reply_rx.as_ref() {
+            if let Ok(hits) = rx.try_recv() {
+                if self.pending_query == self.query.trim() {
+                    self.results = hits;
+                    self.selected = 0;
+                    self.reply_rx = None;
+                }
+            }
         }
-        if !self.results.is_empty() {
+        if self.selected >= self.results.len() && !self.results.is_empty() {
+            self.selected = self.results.len().saturating_sub(1);
+        }
+
+        // Keyboard navigation (disabled while modal is open).
+        if !self.show_folders_modal && !self.results.is_empty() {
             let (down, up, enter, ctrl) = ctx.input(|i| {
                 (
                     i.key_pressed(egui::Key::ArrowDown),
@@ -264,78 +270,434 @@ impl eframe::App for App {
             }
         }
 
-        // 5. UI.
-        egui::TopBottomPanel::top("tilik_top").show(&mut ctx, |ui| {
-            let resp = ui.text_edit_singleline(&mut self.query);
-            if !self.focused {
-                resp.request_focus();
-                self.focused = true;
-            }
-        });
+        // Palette
+        let base = egui::Color32::from_rgb(11, 14, 20);
+        let surface = egui::Color32::from_rgb(20, 25, 35);
+        let elevated = egui::Color32::from_rgb(28, 35, 48);
+        let border = egui::Color32::from_rgb(42, 51, 68);
+        let text = egui::Color32::from_rgb(242, 245, 250);
+        let muted = egui::Color32::from_rgb(142, 155, 174);
+        let accent = egui::Color32::from_rgb(66, 133, 244);
+        let success = egui::Color32::from_rgb(52, 211, 153);
+        let danger = egui::Color32::from_rgb(248, 113, 113);
 
-        egui::SidePanel::right("tilik_preview")
-            .min_width(240.0)
-            .default_width(300.0)
-            .show(&mut ctx, |ui| {
-                ui.heading("Preview");
-                ui.separator();
-                match self.results.get(self.selected) {
-                    Some(h) => {
-                        let ext = h.extension.to_ascii_lowercase();
-                        let is_video = extractor::is_video_extension(&ext);
-                        if is_video {
-                            ui.label("Text preview is not available for video files.");
-                        } else if !extractor::is_text_preview_available(&ext, &h.snippet) {
-                            ui.label("Text preview is not available for this file.");
-                        } else {
-                            ui.label(h.snippet.replace("<b>", "").replace("</b>", ""));
-                        }
-                        ui.separator();
-                        if let Ok(md) = std::fs::metadata(&h.path) {
-                            ui.label(format!("Size: {}", fmt_bytes(md.len())));
-                            ui.label(format!("Modified: {}", format_ts(h.modified_ts)));
-                        }
-                        ui.label(format!("Path: {}", h.path));
+        // ---------- Top search bar ----------
+        egui::TopBottomPanel::top("top_bar")
+            .frame(egui::Frame::new().fill(base).inner_margin(12.0))
+            .show(ctx, |ui| {
+                // Gambar tombol Folder di kanan dulu supaya search box mengisi sisa lebar dengan aman.
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let folder_label = format!("Folder ({})", self.roots.len());
+                    let folder_button = if self.roots.is_empty() {
+                        ui.add(
+                            egui::Button::new(
+                                egui::RichText::new(folder_label)
+                                    .strong()
+                                    .color(egui::Color32::BLACK),
+                            )
+                            .fill(egui::Color32::from_rgb(245, 158, 11)),
+                        )
+                    } else {
+                        ui.add(
+                            egui::Button::new(egui::RichText::new(folder_label).color(text))
+                                .fill(elevated),
+                        )
+                    };
+                    if folder_button.clicked() {
+                        self.show_folders_modal = !self.show_folders_modal;
                     }
-                    None => {
-                        ui.label(if self.query.trim().is_empty() {
-                            "Type to search."
-                        } else {
-                            "No results."
-                        });
-                    }
-                }
 
-                ui.separator();
-                ui.heading("Indexed folders");
-                let mut remove: Vec<usize> = Vec::new();
-                for (i, r) in self.roots.iter().enumerate() {
-                    ui.horizontal(|ui| {
-                        ui.label(r.clone());
-                        if ui.small_button("×").clicked() {
-                            remove.push(i);
+                    // Kotak pencarian mengisi sisa lebar di kiri
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        egui::Frame::new()
+                            .fill(elevated)
+                            .stroke(egui::Stroke::new(1.0_f32, border))
+                            .corner_radius(egui::CornerRadius::same(8))
+                            .inner_margin(egui::Margin::symmetric(10, 6))
+                            .show(ui, |ui| {
+                                ui.set_width(ui.available_width());
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    if !self.query.is_empty()
+                                        && ui
+                                            .add(
+                                                egui::Button::new(
+                                                    egui::RichText::new("×").size(16.0).color(muted),
+                                                )
+                                                .frame(false),
+                                            )
+                                            .clicked()
+                                    {
+                                        self.query.clear();
+                                        self.results.clear();
+                                        self.last_searched.clear();
+                                        self.focused = false;
+                                    }
+
+                                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                        ui.label(egui::RichText::new("Cari").color(muted));
+                                        let resp = ui.add(
+                                            egui::TextEdit::singleline(&mut self.query)
+                                                .hint_text("Ketik nama file, ekstensi (.pdf, .jpg), atau isi dokumen...")
+                                                .desired_width(ui.available_width())
+                                                .frame(false),
+                                        );
+                                        if !self.focused && !self.show_folders_modal {
+                                            resp.request_focus();
+                                            self.focused = true;
+                                        }
+                                    });
+                                });
+                            });
+                    });
+                });
+            });
+
+        // ---------- Footer (gambar sebelum CentralPanel agar docking bersih) ----------
+        egui::TopBottomPanel::bottom("footer")
+            .frame(
+                egui::Frame::new()
+                    .fill(base)
+                    .inner_margin(egui::Margin::symmetric(12, 6))
+                    .stroke(egui::Stroke::new(1.0_f32, border)),
+            )
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    if self.indexing {
+                        ui.spinner();
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "Mengindeks... {:.0}%",
+                                self.progress * 100.0
+                            ))
+                            .color(muted),
+                        );
+                    } else {
+                        let (rect, _) =
+                            ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
+                        ui.painter().circle_filled(rect.center(), 4.0, success);
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "Indeks siap · {} folder",
+                                self.roots.len()
+                            ))
+                            .color(muted),
+                        );
+                    }
+                    if !self.status.is_empty() {
+                        ui.label(egui::RichText::new(&self.status).color(danger));
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(
+                            egui::RichText::new(
+                                "Arrow Atas/Bawah Pilih  ·  Enter Buka  ·  Ctrl+Enter Lokasi  ·  Esc Sembunyikan",
+                            )
+                            .size(11.0)
+                            .color(muted),
+                        );
+                    });
+                });
+            });
+
+        // ---------- Main workspace ----------
+        if self.query.trim().is_empty() {
+            egui::CentralPanel::default()
+                .frame(egui::Frame::new().fill(base).inner_margin(24.0))
+                .show(ctx, |ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(60.0);
+                        ui.label(egui::RichText::new("Tilik").size(34.0).strong().color(text));
+                        ui.add_space(4.0);
+                        ui.label(
+                            egui::RichText::new("Cari file & konten dokumen secara instan")
+                                .color(muted),
+                        );
+                        ui.add_space(20.0);
+
+                        // Contoh kata kunci terpusat
+                        let chips = [".pdf", ".jpg", ".txt", "surat"];
+                        let total_chip_w = chips.len() as f32 * 64.0;
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(total_chip_w, 32.0),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| {
+                                for chip in chips {
+                                    if ui.button(chip).clicked() {
+                                        self.query = chip.to_string();
+                                        self.focused = false;
+                                    }
+                                }
+                            },
+                        );
+
+                        if self.roots.is_empty() {
+                            ui.add_space(20.0);
+                            if ui
+                                .add(egui::Button::new("Tambah Folder Pertama").fill(accent))
+                                .clicked()
+                            {
+                                self.show_folders_modal = true;
+                            }
                         }
                     });
-                }
-                for i in remove.into_iter().rev() {
-                    self.roots.remove(i);
-                }
-                ui.horizontal(|ui| {
-                    ui.text_edit_singleline(&mut self.new_root);
-                    let btn_fill = egui::Color32::from_rgb(66, 133, 244);
-                    if ui
-                        .add(egui::Button::new("Add").fill(btn_fill))
-                        .clicked()
-                    {
-                        let t = self.new_root.trim().replace('/', "\\");
-                        if !t.is_empty() && !self.roots.contains(&t) {
-                            self.roots.push(t);
+                });
+        } else {
+            egui::SidePanel::left("results")
+                .resizable(true)
+                .default_width(340.0)
+                .min_width(240.0)
+                .frame(
+                    egui::Frame::new()
+                        .fill(surface)
+                        .inner_margin(12.0)
+                        .stroke(egui::Stroke::new(1.0_f32, border)),
+                )
+                .show(ctx, |ui| {
+                    ui.label(
+                        egui::RichText::new(format!("{} hasil ditemukan", self.results.len()))
+                            .size(12.0)
+                            .color(muted),
+                    );
+                    ui.add_space(6.0);
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        for (i, h) in self.results.iter().enumerate() {
+                            let selected = i == self.selected;
+                            let card_fill = if selected { elevated } else { surface };
+                            let stroke_color = if selected { accent } else { border };
+                            let frame_resp = egui::Frame::new()
+                                .fill(card_fill)
+                                .stroke(egui::Stroke::new(1.0_f32, stroke_color))
+                                .corner_radius(egui::CornerRadius::same(8))
+                                .inner_margin(8.0)
+                                .show(ui, |ui| {
+                                    ui.set_width(ui.available_width());
+                                    ui.horizontal(|ui| {
+                                        let badge_color = ext_color(&h.extension);
+                                        egui::Frame::new()
+                                            .fill(badge_color)
+                                            .corner_radius(egui::CornerRadius::same(4))
+                                            .inner_margin(egui::Margin::symmetric(5, 2))
+                                            .show(ui, |ui| {
+                                                ui.label(
+                                                    egui::RichText::new(
+                                                        h.extension.to_uppercase(),
+                                                    )
+                                                    .size(10.0)
+                                                    .strong()
+                                                    .color(egui::Color32::WHITE),
+                                                );
+                                            });
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(&h.filename)
+                                                    .strong()
+                                                    .color(text),
+                                            )
+                                            .truncate(),
+                                        );
+                                    });
+                                    let parent = Path::new(&h.path)
+                                        .parent()
+                                        .map(|p| p.to_string_lossy().to_string())
+                                        .unwrap_or_default();
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(parent).size(11.5).color(muted),
+                                        )
+                                        .truncate(),
+                                    );
+                                });
+                            if frame_resp.response.interact(egui::Sense::click()).clicked() {
+                                self.selected = i;
+                            }
+                            ui.add_space(4.0);
                         }
-                        self.new_root.clear();
-                        self.commit_roots();
+                    });
+                });
+
+            egui::CentralPanel::default()
+                .frame(egui::Frame::new().fill(base).inner_margin(12.0))
+                .show(ctx, |ui| {
+                    if let Some(h) = self.results.get(self.selected).cloned() {
+                        // Header Card
+                        egui::Frame::new()
+                            .fill(surface)
+                            .stroke(egui::Stroke::new(1.0_f32, border))
+                            .corner_radius(egui::CornerRadius::same(8))
+                            .inner_margin(12.0)
+                            .show(ui, |ui| {
+                                ui.set_width(ui.available_width());
+                                ui.horizontal(|ui| {
+                                    let badge_color = ext_color(&h.extension);
+                                    egui::Frame::new()
+                                        .fill(badge_color)
+                                        .corner_radius(egui::CornerRadius::same(4))
+                                        .inner_margin(egui::Margin::symmetric(5, 2))
+                                        .show(ui, |ui| {
+                                            ui.label(
+                                                egui::RichText::new(h.extension.to_uppercase())
+                                                    .size(10.0)
+                                                    .strong()
+                                                    .color(egui::Color32::WHITE),
+                                            );
+                                        });
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(&h.filename)
+                                                .size(18.0)
+                                                .strong()
+                                                .color(text),
+                                        )
+                                        .wrap(),
+                                    );
+                                });
+                                ui.add_space(2.0);
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(&h.path).size(11.5).color(muted),
+                                    )
+                                    .wrap(),
+                                );
+                            });
+
+                        ui.add_space(8.0);
+                        ui.horizontal(|ui| {
+                            if ui
+                                .add(egui::Button::new("Buka File").fill(accent))
+                                .clicked()
+                            {
+                                self.open_selected(false);
+                            }
+                            if ui
+                                .add(egui::Button::new("Buka Lokasi").fill(elevated))
+                                .clicked()
+                            {
+                                self.open_selected(true);
+                            }
+                            if ui
+                                .add(egui::Button::new("Salin Path").fill(elevated))
+                                .clicked()
+                            {
+                                ctx.copy_text(h.path.clone());
+                            }
+                        });
+
+                        ui.add_space(8.0);
+                        // Metadata Card
+                        egui::Frame::new()
+                            .fill(surface)
+                            .stroke(egui::Stroke::new(1.0_f32, border))
+                            .corner_radius(egui::CornerRadius::same(8))
+                            .inner_margin(12.0)
+                            .show(ui, |ui| {
+                                ui.set_width(ui.available_width());
+                                egui::Grid::new("meta")
+                                    .num_columns(2)
+                                    .spacing(egui::vec2(16.0, 6.0))
+                                    .show(ui, |ui| {
+                                        ui.label(egui::RichText::new("Ukuran").color(muted));
+                                        ui.label(fmt_bytes(
+                                            std::fs::metadata(&h.path)
+                                                .map(|m| m.len())
+                                                .unwrap_or(0),
+                                        ));
+                                        ui.end_row();
+                                        ui.label(egui::RichText::new("Diubah").color(muted));
+                                        ui.label(format_ts(h.modified_ts));
+                                        ui.end_row();
+                                        ui.label(egui::RichText::new("Lokasi").color(muted));
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(&h.path).color(text),
+                                            )
+                                            .wrap(),
+                                        );
+                                        ui.end_row();
+                                    });
+                            });
+
+                        ui.add_space(8.0);
+                        // Content Preview Card
+                        egui::Frame::new()
+                            .fill(elevated)
+                            .stroke(egui::Stroke::new(1.0_f32, border))
+                            .corner_radius(egui::CornerRadius::same(8))
+                            .inner_margin(12.0)
+                            .show(ui, |ui| {
+                                ui.set_width(ui.available_width());
+                                ui.set_min_height(ui.available_height());
+                                egui::ScrollArea::vertical().show(ui, |ui| {
+                                    let ext = h.extension.to_ascii_lowercase();
+                                    let is_video = extractor::is_video_extension(&ext);
+                                    if is_video {
+                                        ui.label(
+                                            egui::RichText::new(
+                                                "Pratinjau teks tidak tersedia untuk file video.",
+                                            )
+                                            .color(muted),
+                                        );
+                                    } else if !extractor::is_text_preview_available(&ext, &h.snippet) {
+                                        ui.label(
+                                            egui::RichText::new(
+                                                "Pratinjau teks tidak tersedia untuk file ini. Klik \"Buka File\" untuk melihatnya.",
+                                            )
+                                            .color(muted),
+                                        );
+                                    } else {
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(
+                                                    h.snippet.replace("<b>", "").replace("</b>", ""),
+                                                )
+                                                .monospace()
+                                                .color(text),
+                                            )
+                                            .wrap(),
+                                        );
+                                    }
+                                });
+                            });
+                    } else {
+                        ui.centered_and_justified(|ui| {
+                            ui.label(
+                                egui::RichText::new(
+                                    "Tidak ada file yang cocok dengan pencarian Anda.",
+                                )
+                                .color(muted),
+                            );
+                        });
                     }
+                });
+        }
+
+        // ---------- Modal folder (gambar paling akhir agar di atas semua panel) ----------
+        if self.show_folders_modal {
+            // Backdrop redup agar fokus ke modal
+            let screen = ctx.screen_rect();
+            egui::Area::new(egui::Id::new("modal_backdrop"))
+                .fixed_pos(screen.min)
+                .order(egui::Order::Middle)
+                .show(ctx, |ui| {
+                    ui.allocate_response(screen.size(), egui::Sense::click());
+                    ui.painter()
+                        .rect_filled(screen, 0.0, egui::Color32::from_black_alpha(150));
+                });
+
+            egui::Window::new("Folder Terindeks")
+                .order(egui::Order::Foreground)
+                .collapsible(false)
+                .resizable(false)
+                .fixed_size([480.0, 360.0])
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.label(
+                        egui::RichText::new(
+                            "Tilik memantau dan mencari nama file maupun isi dokumen di dalam folder berikut:",
+                        )
+                        .color(muted),
+                    );
+                    ui.add_space(6.0);
                     if ui
-                        .add(egui::Button::new("Browse...").fill(btn_fill))
+                        .add(egui::Button::new("+ Pilih Folder...").fill(accent))
                         .clicked()
                     {
                         if let Some(folder) = rfd::FileDialog::new().pick_folder() {
@@ -346,56 +708,159 @@ impl eframe::App for App {
                             self.commit_roots();
                         }
                     }
-                    if ui
-                        .add(egui::Button::new("Save").fill(btn_fill))
-                        .clicked()
-                    {
-                        for r in &mut self.roots {
-                            *r = r.trim().replace('/', "\\");
+                    ui.add_space(6.0);
+
+                    egui::ScrollArea::vertical()
+                        .max_height(190.0)
+                        .show(ui, |ui| {
+                            if self.roots.is_empty() {
+                                ui.label(
+                                    egui::RichText::new(
+                                        "Belum ada folder terdaftar. Klik \"+ Pilih Folder...\" di atas.",
+                                    )
+                                    .color(muted),
+                                );
+                            }
+                            let roots = self.roots.clone();
+                            for (i, r) in roots.iter().enumerate() {
+                                egui::Frame::new()
+                                    .fill(elevated)
+                                    .stroke(egui::Stroke::new(1.0_f32, border))
+                                    .corner_radius(egui::CornerRadius::same(8))
+                                    .inner_margin(egui::Margin::symmetric(10, 6))
+                                    .show(ui, |ui| {
+                                        ui.allocate_ui(egui::vec2(ui.available_width(), 24.0), |ui| {
+                                            ui.with_layout(
+                                                egui::Layout::right_to_left(egui::Align::Center),
+                                                |ui| {
+                                                    if ui.small_button("Hapus").clicked() {
+                                                        self.roots.remove(i);
+                                                        self.commit_roots();
+                                                    }
+                                                    ui.with_layout(
+                                                        egui::Layout::left_to_right(egui::Align::Center),
+                                                        |ui| {
+                                                            ui.add(
+                                                                egui::Label::new(
+                                                                    egui::RichText::new(r).color(text),
+                                                                )
+                                                                .truncate(),
+                                                            );
+                                                        },
+                                                    );
+                                                },
+                                            );
+                                        });
+                                    });
+                                ui.add_space(4.0);
+                            }
+                        });
+
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.new_root)
+                                .hint_text("Atau ketik path folder manual (C:\\...)")
+                                .desired_width(320.0),
+                        );
+                        if ui.button("Tambah").clicked() {
+                            let t = self.new_root.trim().replace('/', "\\");
+                            if !t.is_empty() && !self.roots.contains(&t) {
+                                self.roots.push(t);
+                            }
+                            self.new_root.clear();
+                            self.commit_roots();
                         }
-                        self.commit_roots();
-                    }
+                    });
+                    ui.add_space(8.0);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("Selesai").clicked() {
+                            self.show_folders_modal = false;
+                            self.focused = false;
+                        }
+                    });
                 });
-            });
-
-        egui::CentralPanel::default().show(&mut ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                for (i, h) in self.results.iter().enumerate() {
-                    let r = ui.selectable_label(
-                        i == self.selected,
-                        format!("{}  ·  {}", h.filename, h.extension),
-                    );
-                    if r.clicked() {
-                        self.selected = i;
-                    }
-                }
-                if self.results.is_empty() && !self.query.trim().is_empty() {
-                    ui.label("No results.");
-                }
-            });
-        });
-
-        egui::TopBottomPanel::bottom("tilik_footer").show(&mut ctx, |ui| {
-            let gemini_blue = egui::Color32::from_rgb(66, 133, 244);
-            ui.horizontal(|ui| {
-                ui.add(
-                    egui::ProgressBar::new(self.progress as f32)
-                        .fill(gemini_blue)
-                        .text(
-                            egui::RichText::new(status_label(self.indexing, self.progress))
-                                .color(egui::Color32::WHITE),
-                        ),
-                );
-                if !self.status.is_empty() {
-                    ui.colored_label(egui::Color32::from_rgb(248, 113, 113), &self.status);
-                }
-            });
-        });
+        }
     }
 }
 
-/// Background worker: owns the index, searcher and watcher; the UI never
-/// blocks on it.
+fn ext_color(ext: &str) -> egui::Color32 {
+    match ext.to_ascii_lowercase().as_str() {
+        "pdf" => egui::Color32::from_rgb(239, 68, 68),
+        "doc" | "docx" => egui::Color32::from_rgb(59, 130, 246),
+        "xls" | "xlsx" | "csv" => egui::Color32::from_rgb(34, 197, 94),
+        "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "ico" => egui::Color32::from_rgb(168, 85, 247),
+        "mp4" | "mkv" | "avi" | "mov" | "webm" | "flv" | "wmv" | "m4v" | "3gp" => egui::Color32::from_rgb(249, 115, 22),
+        "txt" | "md" | "rs" | "py" | "js" | "ts" | "json" => egui::Color32::from_rgb(148, 163, 184),
+        _ => egui::Color32::from_rgb(100, 116, 139),
+    }
+}
+
+#[allow(dead_code)]
+fn status_label(indexing: bool, progress: f64) -> String {
+    if indexing {
+        format!("Mengindeks... {:.0}%", progress * 100.0)
+    } else {
+        "Index up to date".into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_label_indexing() {
+        assert_eq!(status_label(true, 0.25), "Mengindeks... 25%");
+        assert_eq!(status_label(false, 1.0), "Index up to date");
+    }
+
+    #[test]
+    fn video_extensions_are_classified() {
+        assert!(tilik_core::extractor::is_video_extension("mp4"));
+        assert!(tilik_core::extractor::is_video_extension("MKV"));
+        assert!(!tilik_core::extractor::is_video_extension("txt"));
+    }
+
+    #[test]
+    fn preview_text_sanitization() {
+        assert!(!tilik_core::extractor::is_text_preview_available("mp4", "some text"));
+        assert!(!tilik_core::extractor::is_text_preview_available("txt", ""));
+        assert!(!tilik_core::extractor::is_text_preview_available("txt", "bad\u{FFFD}text"));
+        assert!(tilik_core::extractor::is_text_preview_available("txt", "clean text"));
+    }
+}
+
+fn fmt_bytes(n: u64) -> String {
+    const U: [&str; 4] = ["B", "KiB", "MiB", "GiB"];
+    let mut f = n as f64;
+    let mut i = 0;
+    while f >= 1024.0 && i < 3 {
+        f /= 1024.0;
+        i += 1;
+    }
+    format!("{f:.1} {}", U[i])
+}
+
+fn format_ts(ts: i64) -> String {
+    if ts < 0 {
+        return "unknown".into();
+    }
+    let z = ts / 86400 + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 3652400) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    let rem = ts % 86400;
+    let (h, mi, s) = (rem / 3600, (rem % 3600) / 60, rem % 60);
+    format!("{y:04}-{m:02}-{d:02} {h:02}:{mi:02}:{s:02}")
+}
+
 fn worker(
     cmd_tx: mpsc::Sender<Cmd>,
     cmd_rx: mpsc::Receiver<Cmd>,
@@ -426,7 +891,7 @@ fn worker(
                 let _ = reply.send(hits);
             }
             Cmd::SetRoots(new_roots) => {
-                _watcher = None; // stops the old watcher + its thread
+                _watcher = None;
                 roots = new_roots;
                 let (wtx, wrx) = mpsc::channel::<Vec<String>>();
                 match watch(&roots, wtx) {
@@ -453,8 +918,6 @@ fn worker(
                         }
                     }
                 });
-                // Rebuild the shared index from the full folder list so added
-                // folders are cumulative and removed folders are cleaned.
                 let _ = cmd_tx.send(Cmd::Reindex);
             }
             Cmd::Reindex => reindex_all(&indexer, &roots, &ui_tx),
@@ -499,76 +962,13 @@ fn reindex_one(indexer: &Indexer, root: &str, ui_tx: &mpsc::Sender<Msg>) {
     let _ = poller.join();
 }
 
-fn status_label(indexing: bool, progress: f64) -> String {
-    if indexing {
-        format!("Indexing... {:.0}%", progress * 100.0)
-    } else {
-        "Index up to date".into()
-    }
-}
-
-fn fmt_bytes(n: u64) -> String {
-    const U: [&str; 4] = ["B", "KiB", "MiB", "GiB"];
-    let mut f = n as f64;
-    let mut i = 0;
-    while f >= 1024.0 && i < 3 {
-        f /= 1024.0;
-        i += 1;
-    }
-    format!("{f:.1} {}", U[i])
-}
-
-/// Unix seconds → "YYYY-MM-DD HH:MM:SS" (civil-from-days, no chrono).
-fn format_ts(ts: i64) -> String {
-    if ts < 0 {
-        return "unknown".into();
-    }
-    let z = ts / 86400 + 719468;
-    let era = if z >= 0 { z } else { z - 146096 } / 146097;
-    let doe = z - era * 146097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 3652400) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    let rem = ts % 86400;
-    let (h, mi, s) = (rem / 3600, (rem % 3600) / 60, rem % 60);
-    format!("{y:04}-{m:02}-{d:02} {h:02}:{mi:02}:{s:02}")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn status_label_indexing() {
-        assert_eq!(status_label(true, 0.25), "Indexing... 25%");
-        assert_eq!(status_label(false, 1.0), "Index up to date");
-    }
-
-    #[test]
-    fn video_extensions_are_classified() {
-        assert!(tilik_core::extractor::is_video_extension("mp4"));
-        assert!(tilik_core::extractor::is_video_extension("MKV"));
-        assert!(!tilik_core::extractor::is_video_extension("txt"));
-    }
-
-    #[test]
-    fn preview_text_sanitization() {
-        assert!(!tilik_core::extractor::is_text_preview_available("mp4", "some text"));
-        assert!(!tilik_core::extractor::is_text_preview_available("txt", ""));
-        assert!(!tilik_core::extractor::is_text_preview_available("txt", "bad\u{FFFD}text"));
-        assert!(tilik_core::extractor::is_text_preview_available("txt", "clean text"));
-    }
-}
-
 fn main() -> eframe::Result {
     eframe::run_native(
         "Tilik",
         eframe::NativeOptions {
-            viewport: egui::ViewportBuilder::default().with_inner_size([760.0, 480.0]),
+            viewport: egui::ViewportBuilder::default()
+                .with_inner_size([920.0, 580.0])
+                .with_min_inner_size([680.0, 420.0]),
             ..Default::default()
         },
         Box::new(|cc| Ok(Box::new(App::new(cc)))),
