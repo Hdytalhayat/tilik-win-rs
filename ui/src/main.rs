@@ -337,6 +337,7 @@ impl eframe::App for App {
                                         ui.label(egui::RichText::new("Cari").color(muted));
                                         let resp = ui.add(
                                             egui::TextEdit::singleline(&mut self.query)
+                                                .id(egui::Id::new("main_search_input"))
                                                 .hint_text("Ketik nama file, ekstensi (.pdf, .jpg), atau isi dokumen...")
                                                 .desired_width(ui.available_width())
                                                 .frame(false),
