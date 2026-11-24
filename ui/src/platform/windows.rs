@@ -16,7 +16,10 @@ use winapi::shared::winerror::ERROR_ALREADY_EXISTS;
 use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::handleapi::CloseHandle;
 use winapi::um::synchapi::CreateMutexW;
-use winapi::um::winuser::{DispatchMessageW, MSG, PM_REMOVE, PeekMessageW, TranslateMessage};
+use winapi::um::winuser::{
+    DispatchMessageW, FindWindowW, MSG, PM_REMOVE, PeekMessageW, SW_SHOW, SetForegroundWindow,
+    ShowWindow, TranslateMessage,
+};
 use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE};
 use winreg::RegKey;
 
@@ -115,8 +118,8 @@ pub fn init(
         // Keep the tray alive for the lifetime of this thread (TrayIcon is !Send).
         let _tray = tray;
         let _ = tray_tx.send(Ok(()));
- 
-        // Dispatcher: polls hotkey (if active) + tray events.
+
+        // Dispatcher: polls hotkey + tray events, and pumps Win32 messages.
         loop {
             if hotkey_ok {
                 if let Ok(ev) = GlobalHotKeyEvent::receiver().try_recv() {
@@ -136,8 +139,6 @@ pub fn init(
                     _ => {}
                 }
             }
-            // Pump Win32 messages so the tray icon's hidden window receives
-            // click/menu events on this thread.
             unsafe {
                 let mut msg: MSG = std::mem::zeroed();
                 while PeekMessageW(&mut msg, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
@@ -168,6 +169,14 @@ fn set_visible(visible: bool) {
     VISIBLE.store(visible, Ordering::SeqCst);
     if visible {
         NEED_FOCUS.store(true, Ordering::SeqCst);
+        unsafe {
+            let title: Vec<u16> = "Tilik\0".encode_utf16().collect();
+            let hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
+            if !hwnd.is_null() {
+                ShowWindow(hwnd, SW_SHOW);
+                SetForegroundWindow(hwnd);
+            }
+        }
     }
     let Some(ctx) = UI_CTX.lock().unwrap().clone() else {
         return;
